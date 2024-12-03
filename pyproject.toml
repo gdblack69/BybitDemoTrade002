@@ -6,7 +6,7 @@ authors = ["Your Name <your.email@example.com>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = ">=3.5,<3.13"
+python = ">=3.9,<3.13"
 pybit = "^5.8.0"  # Specify the version of the pybit module
 python-telegram-bot = "21.7"
 requests = "2.26.0"
