@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "your-project-name"
+version = "0.1.0"
+description = "A description of your project"
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+pybit = "^5.8.0"  # Specify the version of the pybit module
+python-telegram-bot = "20.0"
+requests = "2.31.0"
+Flask = "2.3.2"
+telethon = "1.28.0"
+
+[tool.poetry.dev-dependencies]
+# You can add development dependencies like pytest or flake8 here, if needed
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
