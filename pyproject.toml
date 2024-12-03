@@ -7,10 +7,10 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 pybit = "^5.8.0"  # Specify the version of the pybit module
-python-telegram-bot = "20.0"
-requests = "2.31.0"
-Flask = "2.3.2"
-telethon = "1.28.0"
+python-telegram-bot = "21.7"
+requests = "2.26.0"
+Flask = "3.1.0"
+telethon = "1.38.1"
 
 [tool.poetry.dev-dependencies]
 # You can add development dependencies like pytest or flake8 here, if needed
