@@ -49,6 +49,7 @@ def receive_otp():
     return jsonify({"status": "OTP received"}), 200
 
 def get_step_size(symbol):
+    """Fetch the step size for the given symbol."""
     try:
         instruments = session.get_instruments_info(category="linear")
         linear_list = instruments["result"]["list"]
@@ -66,6 +67,7 @@ async def handle_bot_response(event):
     bot_message = event.raw_text.strip('"').strip()
 
     try:
+        # Parse bot message
         message_parts = bot_message.split("\n")
         symbol, price, stop_loss_price, take_profit_price = None, None, None, None
 
@@ -82,6 +84,7 @@ async def handle_bot_response(event):
         if not all([symbol, price, stop_loss_price, take_profit_price]):
             raise ValueError("Invalid message format received from the bot")
 
+        # Get the step size (ticker size) for the symbol
         step_size = get_step_size(symbol)
 
         # Fetch account balance
@@ -93,6 +96,7 @@ async def handle_bot_response(event):
         )
         wallet_balance = float(usdt_data.get("walletBalance", 0))
 
+        # Calculate maximum quantity
         max_qty = wallet_balance / price
         max_qty = math.floor(max_qty / step_size) * step_size
 
