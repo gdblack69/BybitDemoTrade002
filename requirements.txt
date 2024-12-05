@@ -1,0 +1,6 @@
+pybit==5.8.0
+telethon==1.28.0
+pip==24.3.1
+python-telegram-bot==20.0
+requests==2.31.0
+Flask
