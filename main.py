@@ -200,6 +200,11 @@ async def receive_otp():
         logging.error(f"Error receiving OTP: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Render."""
+    return jsonify({"status": "healthy"}), 200
+
 async def telegram_login():
     """Handle Telegram login with OTP."""
     global otp_received, last_otp_request_time
@@ -248,35 +253,48 @@ async def telegram_login():
             logging.info("Telegram client already authorized")
     except Exception as e:
         logging.error(f"Error during Telegram login: {traceback.format_exc()}")
-        raise
+        print(f"Error during Telegram login: {str(e)}")
+        # Do not raise, allow Flask to continue running
 
-async def run_flask():
-    """Run the Flask app in a separate thread."""
-    from threading import Thread
-    def start_flask():
-        app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)), debug=False)
-    Thread(target=start_flask, daemon=True).start()
+def run_flask():
+    """Run the Flask app in the main thread."""
+    port = int(os.getenv("PORT", 5000))
+    logging.info(f"Starting Flask app on port {port}")
+    print(f"Starting Flask app on port {port}")
+    try:
+        app.run(host='0.0.0.0', port=port, debug=False)
+    except Exception as e:
+        logging.error(f"Failed to start Flask app: {traceback.format_exc()}")
+        print(f"Failed to start Flask app: {str(e)}")
+        raise
 
 async def main():
     """Main function to start Flask and Telegram client."""
+    # Start Flask in the main thread to ensure immediate binding
+    from threading import Thread
+    flask_thread = Thread(target=run_flask, daemon=False)
+    flask_thread.start()
+
+    # Wait briefly to ensure Flask has started
+    await asyncio.sleep(2)
+
+    # Handle Telegram login concurrently
     try:
-        # Handle Telegram login first
         await telegram_login()
         print("Telegram login completed successfully.")
         logging.info("Telegram login completed successfully.")
+    except Exception as e:
+        logging.error(f"Telegram login failed but Flask is running: {str(e)}")
+        print(f"Telegram login failed but Flask is running: {str(e)}")
 
-        # Start Flask app only after successful login
-        await run_flask()
-        print("Flask app started.")
-        logging.info("Flask app started on port %s", os.getenv("PORT", 5000))
-
+    # Start Telegram client event loop
+    try:
         print("Telegram client started. Listening for bot messages...")
         logging.info("Telegram client started. Listening for bot messages...")
         await client.run_until_disconnected()
     except Exception as e:
-        logging.error(f"Failed to start application: {traceback.format_exc()}")
-        print(f"Failed to start application: {str(e)}")
-        raise  # Ensure the app exits on failure
+        logging.error(f"Telegram client failed: {traceback.format_exc()}")
+        print(f"Telegram client failed: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
