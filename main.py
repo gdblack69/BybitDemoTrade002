@@ -4,10 +4,11 @@ import asyncio
 import traceback
 from flask import Flask, request, jsonify
 from telethon import TelegramClient, events
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, FloodWaitError
 from pybit.unified_trading import HTTP
 from dotenv import load_dotenv
 import os
+import time
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -37,16 +38,18 @@ session = HTTP(api_key=API_KEY, api_secret=API_SECRET, testnet=False, demo=True)
 # Initialize Telegram client
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
-# Global variable to store OTP and manage login state
+# Global variables to manage OTP state and rate limiting
 otp_received = None
 login_event = asyncio.Event()
+last_otp_request_time = 0
+OTP_REQUEST_INTERVAL = 60  # Minimum interval between OTP requests (in seconds)
 
 def get_step_size(symbol):
     """Fetch the step size for the given symbol."""
     try:
         instruments = session.get_instruments_info(category="linear")
         linear_list = instruments["result"]["list"]
-        symbol_info = next((x for x in linear_list if x["symbol charisma== symbol), None)
+        symbol_info = next((x for x in linear_list if x["symbol"] == symbol), None)
 
         if symbol_info:
             return float(symbol_info["lotSizeFilter"]["qtyStep"])
@@ -199,13 +202,28 @@ async def receive_otp():
 
 async def telegram_login():
     """Handle Telegram login with OTP."""
-    global otp_received
+    global otp_received, last_otp_request_time
     try:
         await client.connect()
         if not await client.is_user_authorized():
+            # Rate limit OTP requests
+            current_time = time.time()
+            time_since_last_request = current_time - last_otp_request_time
+            if time_since_last_request < OTP_REQUEST_INTERVAL:
+                wait_time = OTP_REQUEST_INTERVAL - time_since_last_request
+                logging.info(f"Rate limiting OTP request. Waiting {wait_time:.2f} seconds before next request.")
+                await asyncio.sleep(wait_time)
+
             print("Client not authorized, requesting code...")
             logging.info("Requesting Telegram authentication code for %s", PHONE_NUMBER)
-            await client.send_code_request(PHONE_NUMBER)
+            try:
+                await client.send_code_request(PHONE_NUMBER)
+                last_otp_request_time = time.time()  # Update last request time
+            except FloodWaitError as e:
+                logging.error(f"Flood wait error: Must wait {e.seconds} seconds before requesting another OTP")
+                await asyncio.sleep(e.seconds)
+                return  # Exit to avoid infinite loop
+
             print("Waiting for OTP via /otp endpoint...")
             logging.info("Waiting for OTP via /otp endpoint...")
             await login_event.wait()  # Wait for OTP to be received
@@ -241,16 +259,24 @@ async def run_flask():
 
 async def main():
     """Main function to start Flask and Telegram client."""
-    # Start Flask app
-    await run_flask()
-    print("Flask app started.")
-    logging.info("Flask app started on port %s", os.getenv("PORT", 5000))
+    try:
+        # Handle Telegram login first
+        await telegram_login()
+        print("Telegram login completed successfully.")
+        logging.info("Telegram login completed successfully.")
 
-    # Handle Telegram login
-    await telegram_login()
-    print("Telegram client started. Listening for bot messages...")
-    logging.info("Telegram client started. Listening for bot messages...")
-    await client.run_until_disconnected()
+        # Start Flask app only after successful login
+        await run_flask()
+        print("Flask app started.")
+        logging.info("Flask app started on port %s", os.getenv("PORT", 5000))
+
+        print("Telegram client started. Listening for bot messages...")
+        logging.info("Telegram client started. Listening for bot messages...")
+        await client.run_until_disconnected()
+    except Exception as e:
+        logging.error(f"Failed to start application: {traceback.format_exc()}")
+        print(f"Failed to start application: {str(e)}")
+        raise  # Ensure the app exits on failure
 
 if __name__ == "__main__":
     asyncio.run(main())
