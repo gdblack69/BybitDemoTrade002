@@ -157,7 +157,9 @@ async def handle_bot_response(event):
             logging.info(f"Placing order with parameters: {order_params}")
             order = session.place_order(**order_params)
 
-            if order["retCode"] == 0:
+           
+
+if order["retCode"] == 0:
                 trade_details = format_trade_details(
                     symbol, price, stop_loss_price, take_profit_price,
                     max_qty, order, equity, wallet_balance
@@ -209,25 +211,42 @@ async def telegram_login():
     """Handle Telegram login with OTP."""
     global otp_received, last_otp_request_time
     try:
+        logging.info("Connecting to Telegram client...")
+        print("Connecting to Telegram client...")
         await client.connect()
-        if not await client.is_user_authorized():
+        logging.info("Checking if client is authorized...")
+        print("Checking if client is authorized...")
+        authorized = await client.is_user_authorized()
+        logging.info(f"Client authorized: {authorized}")
+        print(f"Client authorized: {authorized}")
+        if not authorized:
             # Rate limit OTP requests
             current_time = time.time()
             time_since_last_request = current_time - last_otp_request_time
+            logging.info(f"Time since last OTP request: {time_since_last_request} seconds")
+            print(f"Time since last OTP request: {time_since_last_request} seconds")
             if time_since_last_request < OTP_REQUEST_INTERVAL:
                 wait_time = OTP_REQUEST_INTERVAL - time_since_last_request
                 logging.info(f"Rate limiting OTP request. Waiting {wait_time:.2f} seconds before next request.")
+                print(f"Rate limiting OTP request. Waiting {wait_time:.2f} seconds before next request.")
                 await asyncio.sleep(wait_time)
 
             print("Client not authorized, requesting code...")
             logging.info("Requesting Telegram authentication code for %s", PHONE_NUMBER)
             try:
                 await client.send_code_request(PHONE_NUMBER)
-                last_otp_request_time = time.time()  # Update last request time
+                last_otp_request_time = time.time()
+                logging.info("OTP request sent successfully")
+                print("OTP request sent successfully")
             except FloodWaitError as e:
                 logging.error(f"Flood wait error: Must wait {e.seconds} seconds before requesting another OTP")
+                print(f"Flood wait error: Must wait {e.seconds} seconds before requesting another OTP")
                 await asyncio.sleep(e.seconds)
                 return  # Exit to avoid infinite loop
+            except Exception as e:
+                logging.error(f"Failed to send OTP request: {traceback.format_exc()}")
+                print(f"Failed to send OTP request: {str(e)}")
+                return
 
             print("Waiting for OTP via /otp endpoint...")
             logging.info("Waiting for OTP via /otp endpoint...")
@@ -239,9 +258,11 @@ async def telegram_login():
                     logging.info("Telegram login successful")
                 except PhoneCodeInvalidError:
                     logging.error("Invalid OTP provided: %s", otp_received)
+                    print("Invalid OTP provided: %s", otp_received)
                     raise ValueError("Invalid OTP provided")
                 except SessionPasswordNeededError:
                     logging.error("Two-factor authentication required, but not supported in this setup")
+                    print("Two-factor authentication required, but not supported in this setup")
                     raise ValueError("Two-factor authentication required")
                 finally:
                     otp_received = None  # Reset OTP
