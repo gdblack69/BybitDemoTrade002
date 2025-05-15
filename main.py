@@ -4,6 +4,7 @@ import asyncio
 import traceback
 from flask import Flask, request, jsonify
 from telethon import TelegramClient, events
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError
 from pybit.unified_trading import HTTP
 from dotenv import load_dotenv
 import os
@@ -18,7 +19,7 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)s %(message)s'
 )
 
-# Load environment variables from .env file
+# Load environment variables from .env file (for local testing)
 load_dotenv()
 
 # Configuration variables from environment
@@ -45,7 +46,7 @@ def get_step_size(symbol):
     try:
         instruments = session.get_instruments_info(category="linear")
         linear_list = instruments["result"]["list"]
-        symbol_info = next((x for x in linear_list if x["symbol"] == symbol), None)
+        symbol_info = next((x for x in linear_list if x["symbol charisma== symbol), None)
 
         if symbol_info:
             return float(symbol_info["lotSizeFilter"]["qtyStep"])
@@ -203,18 +204,30 @@ async def telegram_login():
         await client.connect()
         if not await client.is_user_authorized():
             print("Client not authorized, requesting code...")
-            await client.start(phone=PHONE_NUMBER)
-            print("Waiting for OTP...")
+            logging.info("Requesting Telegram authentication code for %s", PHONE_NUMBER)
+            await client.send_code_request(PHONE_NUMBER)
+            print("Waiting for OTP via /otp endpoint...")
+            logging.info("Waiting for OTP via /otp endpoint...")
             await login_event.wait()  # Wait for OTP to be received
             if otp_received:
-                await client.sign_in(phone=PHONE_NUMBER, code=otp_received)
-                print("Logged in successfully.")
-                otp_received = None  # Reset OTP
-                login_event.clear()  # Reset event
+                try:
+                    await client.sign_in(phone=PHONE_NUMBER, code=otp_received)
+                    print("Logged in successfully.")
+                    logging.info("Telegram login successful")
+                except PhoneCodeInvalidError:
+                    logging.error("Invalid OTP provided: %s", otp_received)
+                    raise ValueError("Invalid OTP provided")
+                except SessionPasswordNeededError:
+                    logging.error("Two-factor authentication required, but not supported in this setup")
+                    raise ValueError("Two-factor authentication required")
+                finally:
+                    otp_received = None  # Reset OTP
+                    login_event.clear()  # Reset event
             else:
                 raise ValueError("OTP not received")
         else:
             print("Client already authorized.")
+            logging.info("Telegram client already authorized")
     except Exception as e:
         logging.error(f"Error during Telegram login: {traceback.format_exc()}")
         raise
@@ -223,7 +236,7 @@ async def run_flask():
     """Run the Flask app in a separate thread."""
     from threading import Thread
     def start_flask():
-        app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)))
+        app.run(host='0.0.0.0', port=int(os.getenv("PORT", 5000)), debug=False)
     Thread(target=start_flask, daemon=True).start()
 
 async def main():
@@ -231,10 +244,12 @@ async def main():
     # Start Flask app
     await run_flask()
     print("Flask app started.")
+    logging.info("Flask app started on port %s", os.getenv("PORT", 5000))
 
     # Handle Telegram login
     await telegram_login()
     print("Telegram client started. Listening for bot messages...")
+    logging.info("Telegram client started. Listening for bot messages...")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
