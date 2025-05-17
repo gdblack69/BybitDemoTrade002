@@ -5,3 +5,5 @@ python-telegram-bot==20.0
 requests==2.31.0
 Flask
 python-dotenv==1.0.1
+b2sdk
+
